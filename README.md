@@ -1,5 +1,5 @@
 # FileSearcher
-Python3 script to search through unstructured directories and files.
+Python3 script to recursively search through unstructured directories and files.
 
 You can simply point the script at a directories, and it will attempt to search the files using a provided keyword list. It should handle compressed files as well.
 
@@ -13,3 +13,17 @@ I prefer the option of converting the PDF's to text first using the linux 'pdfto
 
 # Future Work
 I consider this a POC at this point. Currently investigating ways to increase reliability, increase performance, remove confusing dependencies, and make it easier to use. 
+
+# Usage Example
+Below is an example of searching through a directory:
+
+    working_dir = "C:\\MyWorkingDirectory" # Base directory we are working from
+    original_dir = "C:\\MyWorkingDirectory\\SearchDirectory" # Directory containing the files of interest
+    keywords_file = "C:\\MyWorkingDirectory\\keywords.txt" # New Line Delimited File containing the keywords which will be searched for
+    estimated_files = 1000000 # Used for more accurately displaying progress
+
+    fs = FileSearcher(working_dir, original_dir, keywords_file, estimated_files=estimated_files)
+    fs.create_dirs()
+    searchme = original_dir 
+    fs.process_directory(searchme)
+    fs.cleanup_directories(searchme)
