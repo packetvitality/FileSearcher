@@ -1,7 +1,7 @@
 # FileSearcher
 Python3 script to recursively search through unstructured directories and files.
 
-You can simply point the script at a directories, and it will attempt to search the files using a provided keyword list. It should handle compressed files as well.
+You can simply point the script at a directory, and it will attempt to search the files using a provided keyword list. It should handle compressed files as well.
 
 # Dependencies
 Other then the requirements file, the script uses the python-magic which requires a seperate installer. See here:
