@@ -19,6 +19,7 @@ import xlrd
 from xlrd.sheet import ctype_text
 import docx
 import PyPDF2
+import stopit
 
 class FileSearcher:
     """
@@ -174,7 +175,7 @@ class FileSearcher:
         try:
             move(filename, new_file)
             with open(self.log_file, 'a', encoding=self.system_encoding) as log_file:
-                log_file.write("[{} Success]{}".format(self.organize.__name__,filename))
+                log_file.write("[{} Success]{} -> {}".format(self.organize.__name__,filename, new_file))
                 log_file.write('\n')
             return True
         except Exception as e:
@@ -435,28 +436,33 @@ class FileSearcher:
 
     def _search_pdf(self, filename):
         try:
-            with open(filename,'rb') as pdf_file:
-                read_pdf = PyPDF2.PdfFileReader(pdf_file, strict=False) #Read and supress warnings
-                if read_pdf.isEncrypted:
-                    with open(self.log_file, 'a', encoding=self.system_encoding) as log_file:
-                        log_file.write("[{}]{} --- {}".format(self._search_pdf.__name__,filename, "File is encrypted, unable to parse."))
-                        log_file.write('\n')
-                    return False
-                number_of_pages = read_pdf.getNumPages()
-                for page_number in range(number_of_pages):
-                    page = read_pdf.getPage(page_number)
-                    page_content = page.extractText()
-                    for keyword in self.keywords:
-                        if re.search(keyword, page_content, re.IGNORECASE):
-                            keyword_result_file = os.path.join(self.results_dir, keyword + ".txt")
-                            with open(keyword_result_file, 'a') as krs:
-                                # file_basename = os.path.split(filename)[1] #Only the filename
-                                result = filename + "---" + page_content
-                                krs.write(result)
-            with open(self.log_file, 'a', encoding=self.system_encoding) as log_file:
-                log_file.write("[{} Success]{}".format(self._search_pdf.__name__,filename))
-                log_file.write('\n')
-            return True
+            with stopit.ThreadingTimeout(20) as to_ctx_mgr: ##Exit if a PDF takes too long to extract. The 'page.extractText()' function has proven to hang in some cases. 
+                assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING, "Failed to extract text from PDF." 
+                with open(filename,'rb') as pdf_file:
+                    read_pdf = PyPDF2.PdfFileReader(pdf_file, strict=False) ##Read and supress warnings
+                    if read_pdf.isEncrypted:
+                        with open(self.log_file, 'a', encoding=self.system_encoding) as log_file:
+                            log_file.write("[{}]{} --- {}".format(self._search_pdf.__name__,filename, "File is encrypted, unable to parse."))
+                            log_file.write('\n')
+                        return False
+                    number_of_pages = read_pdf.getNumPages()
+                    for page_number in range(number_of_pages):
+                        page = read_pdf.getPage(page_number)
+                        page_content = page.extractText()
+                        for keyword in self.keywords:
+                            if re.search(keyword, page_content, re.IGNORECASE):
+                                keyword_result_file = os.path.join(self.results_dir, keyword + ".txt")
+                                with open(keyword_result_file, 'a') as krs:
+                                    result = filename + "---" + page_content
+                                    krs.write(result)
+
+                with open(self.log_file, 'a', encoding=self.system_encoding) as log_file:
+                    log_file.write("[{} Success]{}".format(self._search_pdf.__name__,filename))
+                    log_file.write('\n')
+                return True
+
+            if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT: ##Custom error log for failed PDF searches
+                raise RuntimeError("Unable to extract text from PDF or the process took to long.")
 
         except Exception as e:
             with open(self.log_file, 'a', encoding=self.system_encoding) as log_file:
@@ -526,45 +532,47 @@ class FileSearcher:
                             self.organize(directory, filename)
                         else:
                             self.organize(directory, filename, error=True)
-                    # PDF Files
+                    ##PDF Files
                     elif "PDF document" in filetype:
                         if self._search_pdf(filename):
                             self.organize(directory, filename)
                         else:
                             self.organize(directory, filename, error=True)
-                    # Unsupported files
+                    ##Unsupported files
                     else:
                         self.organize(directory, filename, supported=False)
-
+                ##Unable to determine file type
+                else:
+                    self.organize(directory, filename, error=True)
+            
 def main():
     # Variables & instantiation 
-    working_dir = "" # Base directory we are working from
-    original_dir = "" # Directory containing the files of interest
-    keywords_file = "" # File containing the keywords which will be searched for
-    estimated_files = None # You can put an integer here, best guess of how many files there are. Provides a more useful progress bar.
+    working_dir = "D:\\WorkingDir" # Base directory we are working from
+    original_dir = "D:\\WorkingDir\\SearchDir" # Directory containing the files of interest
+    keywords_file = "D:\\WorkingDir\\keywords.txt" # File containing the keywords which will be searched for
+    estimated_files = 1000000
 
     fs = FileSearcher(working_dir, original_dir, keywords_file, estimated_files=estimated_files)
 
     # Create Required Directories
     fs.create_dirs()
 
-    # Preliminary check for compressed files. Saves some processing time to do a first pass through the directory (non recursive) and uncompress files.
-    # If additional compressed files are found during processing, they will be handled as well. However, the loop gets restarted to handle the newly uncompressed files.
+    ##Preliminary check for compressed files. Saves some processing time to do a first pass through the directory (non recursive) and uncompress files.
+    ##If additional compressed files are found during processing, they will be handled as well. However, the loop gets restarted to handle the newly uncompressed files.
     # fs.uncompress_tar_flevel(original_dir)
 
-    # Get file statistics if needed, this is time consuming.
+    ##Get file statistics if needed, this is time consuming.
     # fs.get_filetype_stats(searchme)
     
-    # Optionally, group the files by file exention. 
+    ##Optionally, group the files by file exention. 
     # fs.group_by_extension()
 
-    # Declare what we are searching
+    ##Declare what we are searching
     searchme = original_dir # Likely either going to use the 'original_dir' or the Grouped file directory.
-    # Search
+    ##Search
     fs.process_directory(searchme)
-    # Delete any empty directories
+    ##Delete any empty directories
     fs.cleanup_directories(searchme)
     
 if __name__ == "__main__":
     main()
-
